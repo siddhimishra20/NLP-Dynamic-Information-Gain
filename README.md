@@ -25,6 +25,9 @@ On the RAGTruth held-out test set (*n* = 2,675), DIG achieves **AUROC 0.6859** (
 - [Results Summary](#results-summary)
 - [Project Structure](#project-structure)
 - [Setup & Requirements](#setup--requirements)
+  - [System Requirements](#system-requirements)
+  - [Installation](#installation)
+  - [Running demo.py](#running-demopy)
 - [Reproducing Results](#reproducing-results)
 - [Dataset Access](#dataset-access)
 - [Key Design Decisions](#key-design-decisions)
@@ -164,14 +167,14 @@ The composite outperforms entropy-alone for GPT-4 (0.7007 vs 0.6988), indicating
 
 ### E8 — SOTA Gap (RAGTruth Test Set)
 
-| System | AUROC |
-|--------|-------|
-| LUMINA (supervised upper bound) | 0.87 |
-| ReDeEP (unsupervised) | ≈0.82 | 
-| Semantic Entropy (published) | ≈0.70 | 
-| **DIG Composite (ours)** | **0.6859** |
-| Entropy-only (lower bound) | 0.6550 | 
-| SelfCheckGPT | 0.5000 | 
+| System | AUROC | Gap Closed |
+|--------|-------|------------|
+| LUMINA (supervised upper bound) | 0.87 | 100% |
+| ReDeEP (unsupervised) | ≈0.82 | 80.2% |
+| Semantic Entropy (published) | ≈0.70 | 51.1% |
+| **DIG Composite (ours)** | **0.6859** | **14.4%** |
+| Entropy-only (lower bound) | 0.6550 | 0% |
+| SelfCheckGPT | 0.5000 | — |
 
 Gap closed = (0.6859 − 0.6550) / (0.87 − 0.6550) × 100 = **14.4%**, without any labelled training data or supervised fine-tuning.
 
@@ -180,8 +183,12 @@ Gap closed = (0.6859 − 0.6550) / (0.87 − 0.6550) × 100 = **14.4%**, without
 ## Project Structure
 
 ```
-Track_A_NLP_DIG.ipynb       ← Main pipeline notebook
+NLP-Dynamic-Information-Gain-/
+├── demo.py                     ← Standalone inference script (run this)
+├── requirements.txt            ← All dependencies
+├── Track_A_NLP_DIG.ipynb      ← Main pipeline notebook (full experiments)
 │
+│   Notebook sections:
 ├── Section 0               Environment setup and Google Drive mount
 ├── Section 1               RAGTruth dataset loading and preprocessing
 ├── Section 2               Mistral-7B-v0.1 (4-bit NF4) + semantic encoder
@@ -218,9 +225,22 @@ demo_token_scores.png
 
 ## Setup & Requirements
 
-This notebook is designed to run on **Google Colab** with a T4 GPU (15 GB VRAM).
+### System requirements
+
+| Requirement | Minimum |
+|-------------|---------|
+| **Python** | 3.10 or 3.11 (tested on 3.10.12) |
+| **GPU VRAM** | 4.5 GB (4-bit NF4); 14 GB+ for full-precision |
+| **Recommended environment** | Google Colab T4 (15 GB VRAM) or any CUDA-capable GPU |
+| **CUDA** | 11.8+ |
+| **OS** | Linux (Ubuntu 20.04+), macOS (CPU-only), Windows WSL2 |
+
+> CPU fallback is supported but inference will be very slow (~minutes per example). A CUDA GPU is strongly recommended.
+
+### Dependencies (`requirements.txt`)
 
 ```
+torch>=2.0.0
 transformers>=4.41.0
 accelerate
 bitsandbytes>=0.43.0
@@ -235,14 +255,95 @@ pandas
 tqdm
 datasets
 huggingface_hub
+numpy
 ```
 
-Install via:
+### Installation
 
 ```bash
-pip install transformers>=4.41.0 accelerate bitsandbytes>=0.43.0 selfcheckgpt \
-    sentence-transformers scikit-learn scipy statsmodels matplotlib seaborn \
-    pandas tqdm datasets huggingface_hub
+# 1. Clone the repository
+git clone https://github.com/siddhimishra20/NLP-Dynamic-Information-Gain-.git
+cd NLP-Dynamic-Information-Gain-
+
+# 2. (Recommended) create a virtual environment
+python3.10 -m venv dig-env
+source dig-env/bin/activate        # Windows: dig-env\Scripts\activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+```
+
+Or install directly:
+
+```bash
+pip install torch>=2.0.0 transformers>=4.41.0 accelerate bitsandbytes>=0.43.0 \
+    selfcheckgpt sentence-transformers scikit-learn scipy statsmodels \
+    matplotlib seaborn pandas tqdm datasets huggingface_hub numpy
+```
+
+### Running `demo.py`
+
+`demo.py` is the standalone inference script at the root of this repository. It accepts a passage and retrieved context and outputs per-token DIG scores to stdout and saves full results to `dig_output.json`.
+
+**Option 1 — inline arguments (recommended):**
+```bash
+python demo.py \
+  --passage "The Eiffel Tower is located in Berlin, Germany." \
+  --context "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France."
+```
+
+**Option 2 — JSON input file:**
+```bash
+python demo.py --input input.json
+```
+
+where `input.json` has the format:
+```json
+{
+  "passage": "Your generated response here",
+  "context": "Your retrieved context document here"
+}
+```
+
+**Option 3 — no arguments (runs built-in Eiffel Tower example):**
+```bash
+python demo.py
+```
+
+**Optional flags:**
+```bash
+python demo.py --passage "..." --context "..." --output my_results.json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--passage` | — | Generated response text to score |
+| `--context` | — | Retrieved context document |
+| `--input` | — | Path to JSON file with `passage` and `context` keys |
+| `--output` | `dig_output.json` | Path to save full JSON results |
+
+**Expected output:**
+```
+[DIG] Loading Mistral-7B-v0.1 (4-bit NF4) on cuda...
+[DIG] Model ready.
+
+======================================================================
+  DIG — Dynamic Information Gain | Token-Level Hallucination Scores
+======================================================================
+
+  Passage : The Eiffel Tower is located in Berlin, Germany....
+  Aggregate DIG Score : -0.1234
+  Decision Threshold  : -0.0849
+  Prediction          : ⚠️  HALLUCINATED
+  Tokens scored       : 14
+
+  Per-Token Scores (top 20 shown):
+  Token              DIG        IG       KL       CD       SE  Label
+  ------------------------------------------------------------------------
+  ...
+======================================================================
+
+[DIG] Full results saved to: dig_output.json
 ```
 
 **Hyperparameters:**

@@ -1,0 +1,16 @@
+torch>=2.0.0
+transformers>=4.41.0
+accelerate
+bitsandbytes>=0.43.0
+selfcheckgpt
+sentence-transformers
+scikit-learn
+scipy
+statsmodels
+matplotlib
+seaborn
+pandas
+tqdm
+datasets
+huggingface_hub
+numpy
